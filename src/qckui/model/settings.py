@@ -6,10 +6,10 @@ from PySide6.QtCore import QObject, QSettings, Slot
 from PySide6.QtGui import QUndoCommand, QUndoStack
 
 
-class _Meta(ABCMeta, type(QObject)): ...
+class QABCMeta(ABCMeta, type(QObject)): ...
 
 
-class Settings(QUndoStack, QSettings, MutableMapping[str, object], metaclass=_Meta):
+class Settings(QUndoStack, QSettings, MutableMapping[str, object], metaclass=QABCMeta):
     _NULL = object()
 
     class _SetValue(QUndoCommand):
@@ -223,7 +223,7 @@ class Settings(QUndoStack, QSettings, MutableMapping[str, object], metaclass=_Me
         self.remove(key)
 
 
-class SettingsGroupView(QObject, MutableMapping[str, object], metaclass=_Meta):
+class SettingsGroupView(QObject, MutableMapping[str, object], metaclass=QABCMeta):
     @override
     def __init__(
         self,
