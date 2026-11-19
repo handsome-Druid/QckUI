@@ -1,0 +1,30 @@
+[project]
+name = "qckui"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "山泥若叶睦", email = "102826168@qq.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "pyside6>=6.12.0",
+]
+
+[project.scripts]
+qckui = "qckui:main"
+
+[build-system]
+requires = ["uv_build>=0.13.9,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "deptry>=0.25.1",
+    "pyright>=1.1.414",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "pytest-dotenv>=0.5.2",
+    "pytest-qt>=4.5.0",
+    "pytest-xdist>=3.8.0",
+]
