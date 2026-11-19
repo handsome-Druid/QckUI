@@ -1,15 +1,11 @@
 [project]
 name = "qckui"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "山泥若叶睦", email = "102826168@qq.com" }
-]
+authors = [{ name = "山泥若叶睦", email = "102826168@qq.com" }]
 requires-python = ">=3.14"
-dependencies = [
-    "pyside6>=6.12.0",
-]
+dependencies = ["pyside6>=6.12.0"]
 
 [project.scripts]
 qckui = "qckui:main"
