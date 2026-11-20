@@ -2,6 +2,12 @@ version = 1
 revision = 5
 requires-python = ">=3.14"
 
+[manifest]
+members = [
+    "fixture-calc",
+    "qckui",
+]
+
 [[package]]
 name = "click"
 version = "8.5.1"
@@ -128,6 +134,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/bf/89/780e11f9588d9e712
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ab/84/02fc1827e8cdded4aa65baef11296a9bbe595c474f0d6d758af082d849fd/execnet-2.1.2-py3-none-any.whl", hash = "sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec", size = 40708, upload-time = "2025-11-12T09:56:36.333Z" },
 ]
+
+[[package]]
+name = "fixture-calc"
+version = "0.1.0"
+source = { editable = "tests/fixtures/extensions/calc" }
 
 [[package]]
 name = "iniconfig"
@@ -355,6 +366,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "deptry" },
+    { name = "fixture-calc" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -369,6 +381,7 @@ requires-dist = [{ name = "pyside6", specifier = ">=6.12.0" }]
 [package.metadata.requires-dev]
 dev = [
     { name = "deptry", specifier = ">=0.25.1" },
+    { name = "fixture-calc", editable = "tests/fixtures/extensions/calc" },
     { name = "pyright", specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },

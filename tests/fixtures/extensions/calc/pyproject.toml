@@ -1,0 +1,17 @@
+[project]
+name = "fixture-calc"
+version = "0.1.0"
+
+[project.entry-points."qckui.extensions"]
+Add = "calc:Add"
+calc = "calc"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["calc"]
+
+[tool.setuptools.package-dir]
+calc = "."
