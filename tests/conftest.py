@@ -1,4 +1,7 @@
+from importlib.machinery import ModuleSpec
+from importlib.util import module_from_spec
 from pathlib import Path
+from sys import modules
 
 from PySide6.QtGui import QGuiApplication
 from pytest import fixture
@@ -20,4 +23,7 @@ def fixtures() -> Path:
 def nodes(qapp: QGuiApplication, fixtures: Path) -> Nodes:
     nodes = Nodes(parent=qapp)
     nodes._dir["test"] = QDir(path=fixtures / "nodes")  # pyright: ignore[reportPrivateUsage]
+    spec = ModuleSpec(name="test", loader=None, is_package=True)
+    spec.submodule_search_locations = [str(object=fixtures / "nodes")]
+    modules["test"] = module_from_spec(spec)
     return nodes

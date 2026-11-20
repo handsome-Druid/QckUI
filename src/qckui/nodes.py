@@ -62,14 +62,16 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
             Nodes.Category.Native: QDir(path=root_dir.absoluteFilePath("native")),
             Nodes.Category.Plugins: QDir(path=root_dir.absoluteFilePath("plugins")),
         }
+        for key, dir in self._dir.items():
+            if not dir.mkpath("."):
+                raise OSError(
+                    self.tr("Failed to make directory: {}").format(dir.absolutePath())
+                )
+            spec = ModuleSpec(name=key, loader=None, is_package=True)
+            spec.submodule_search_locations = [dir.absolutePath()]
+            modules[key] = module_from_spec(spec)
 
     def _load(self, name: str, category: str, /) -> None:
-        if category not in modules:
-            parent_spec = ModuleSpec(name=category, loader=None, is_package=True)
-            parent_spec.submodule_search_locations = [
-                self._dir[category].absolutePath(),
-            ]
-            modules[category] = module_from_spec(parent_spec)
         info = QFileInfo(self._dir[category].absoluteFilePath(name))
         if info.isFile():
             spec: ModuleSpec | None = spec_from_file_location(
