@@ -17,12 +17,13 @@ def test_disk(nodes: Nodes) -> None:
 
 
 def test_reload(nodes: Nodes) -> None:
-    for key in tuple(nodes):
-        if key.startswith("test.test.calc"):
-            nodes._nodes.pop(key)  # pyright: ignore[reportPrivateUsage]
+    for key in nodes:
+        del nodes._nodes[key]  # pyright: ignore[reportPrivateUsage]
+    assert not nodes
+    nodes.reload("test")
+    single_shot_id: int = id(nodes["test.test.singleshot.SingleShot"].cls)
     nodes.reload("test.test")
-    assert nodes["test.test.calc.truediv.Truediv"]
-    assert nodes["test.test.calc.Mul"]
+    assert id(nodes["test.test.singleshot.SingleShot"].cls) != single_shot_id
     mul_id: int = id(nodes["test.test.calc.Mul"].cls)
     div_id: int = id(nodes["test.test.calc.truediv.Truediv"].cls)
     nodes.reload("test.test.calc.truediv")
