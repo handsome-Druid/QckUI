@@ -1,6 +1,5 @@
 from collections.abc import Iterable, Iterator, Mapping
-from enum import StrEnum
-from importlib.machinery import ModuleSpec, all_suffixes
+from importlib.machinery import ModuleSpec, PathFinder, all_suffixes
 from importlib.metadata import EntryPoints, entry_points
 from importlib.util import module_from_spec, spec_from_file_location
 from inspect import (
@@ -36,11 +35,6 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
     _nodes: ClassVar[dict[str, Node]] = {}
     changed = Signal()
 
-    class Category(StrEnum):
-        Native = "native"
-        Plugins = "plugins"
-        Extensions = "extensions"
-
     def __init__(
         self, /, parent: QObject | None = None, *, objectName: str | None = None
     ) -> None:
@@ -58,11 +52,10 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
                     raise OSError(
                         self.tr("Failed to find the root directory of the package.")
                     )
-        self._dir: dict[str, QDir] = {
-            Nodes.Category.Native: QDir(path=root_dir.absoluteFilePath("native")),
-            Nodes.Category.Plugins: QDir(path=root_dir.absoluteFilePath("plugins")),
-        }
-        for key, dir in self._dir.items():
+        self._native_dir = QDir(path=root_dir.absoluteFilePath("native"))
+        self._plugins_dir = QDir(path=root_dir.absoluteFilePath("plugins"))
+        self._categorys = ("native", "plugins")
+        for key, dir in zip(self._categorys, (self._native_dir, self._plugins_dir)):
             if not dir.mkpath("."):
                 raise OSError(
                     self.tr("Failed to make directory: {}").format(dir.absolutePath())
@@ -71,8 +64,10 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
             spec.submodule_search_locations = [dir.absolutePath()]
             modules[key] = module_from_spec(spec)
 
-    def _load(self, name: str, category: str, /) -> None:
-        info = QFileInfo(self._dir[category].absoluteFilePath(name))
+    def _load(self, path: str, target: str | None = None, /) -> None:
+        category, _, name = path.partition(".")
+        # info = QFileInfo(self._dir[category].absoluteFilePath(name))
+        info = QFileInfo(getattr(self, f"_{category}_dir").absoluteFilePath(name))
         if info.isFile():
             spec: ModuleSpec | None = spec_from_file_location(
                 name=category
@@ -114,7 +109,7 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
             if entry_info_list:
                 for info_ in entry_info_list:
                     try:
-                        self._load(info_.fileName(), category)
+                        self._load(f"{category}.{info_.fileName()}")
                     except Exception:
                         _logger.exception(
                             self.tr("Failed to load: {}").format(
@@ -141,10 +136,7 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
                                 info: QFileInfo = info_
                                 break
                 file_name: str = info.fileName()
-                self._load(
-                    file_name,
-                    category,
-                )
+                self._load(f"{category}.{file_name}", path)
             else:
                 raise RuntimeError(
                     self.tr("Path is not a file or directory: {path}").format(
@@ -164,11 +156,60 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
                     path=info.absoluteFilePath()
                 )
             )
-        module: ModuleType = module_from_spec(spec)
         key: str = spec.name
-        modules[key] = module
-        spec.loader.exec_module(module)
-        self._load_module(module)
+        path_: str = target or path
+        if path_ in self._nodes:
+            path_, _, cls = path_.rpartition(".")
+        module_, spec_ = next(
+            (
+                (
+                    modules[k],
+                    PathFinder.find_spec(
+                        fullname=path_,
+                        path=parent.__path__,
+                    )
+                    if (parent := modules.get(k.rsplit(sep=".", maxsplit=1)[0]))
+                    is not None
+                    else None,
+                )
+                for n in range(path_.strip(".").count("."))
+                if (k := path_.rsplit(sep=".", maxsplit=n)[0]) in modules
+            ),
+            (modules.setdefault(key, module_from_spec(spec)), spec),
+        )
+        if spec_ is not None and spec_.loader is not None:
+            module, spec = module_, spec_
+        else:
+            _logger.debug(
+                msg=self.tr(
+                    "Failed to find spec for: {path}, falling back to default loader."
+                ).format(path=path_)
+            )
+            module: ModuleType = modules[key]
+            for k in tuple(modules):
+                if k == path_ != spec.name:
+                    del modules[k]
+                elif path_.startswith(k) and k.startswith(spec.name):
+                    modules[k].__dict__.pop(
+                        path_.removeprefix(k).strip(".").partition(".")[0], None
+                    )
+        spec.loader.exec_module(module)  # pyright: ignore[reportOptionalMemberAccess]
+        if "cls" in locals():
+            if modules.get(path_) is module:
+                self._load_node(target or path, getattr(module, cls, None))  # pyright: ignore[reportPossiblyUnboundVariable]
+                return
+            else:
+                nodes_bak: dict[str, Node] = {
+                    key: self._nodes.pop(key)
+                    for key in tuple(self._nodes)
+                    if key == module.__name__ or key.startswith(module.__name__ + ".")
+                }
+        try:
+            self._load_module(module)
+        except BaseException:
+            if "nodes_bak" in locals():
+                self._nodes.update(nodes_bak)  # pyright: ignore[reportPossiblyUnboundVariable]
+            raise
 
     def _load_module(self, module: ModuleType, /) -> None:
         __all__: list[object] | None = getattr(module, "__all__", None)
@@ -248,83 +289,98 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
                 outputs,
             )
 
+    @Slot()
     @Slot(str)
-    def reload(self, path: str | Category, /) -> None:
-        category, _, module_name = path.partition(".")
-        if category != self.Category.Extensions:
+    def reload(self, path: str | None = None, /) -> None:
+        if not path:
+            for category in self._categorys:
+                self.reload(category)
             nodes_bak: dict[str, Node] = {
                 key: self._nodes.pop(key)
                 for key in tuple(self._nodes)
-                if key == path or key.startswith(path + ".")
+                if not key.startswith(
+                    tuple(category + "." for category in self._categorys)
+                )
             }
+            try:
+                eps: EntryPoints = entry_points(group="qckui.extensions")
+                for key in tuple(modules):
+                    if any(
+                        key == ep.module or key.startswith(ep.module + ".")
+                        for ep in eps
+                    ):
+                        del modules[key]
+                for ep in eps:
+                    try:
+                        if ep.attr:
+                            self._load_node(
+                                ep.module + "." + ep.name,
+                                ep.load(),
+                            )
+                        else:
+                            self._load_module(ep.load())
+                    except Exception:
+                        _logger.exception(
+                            msg=self.tr("Failed to load extension: {}").format(ep.value)
+                        )
+                        continue
+            except BaseException:
+                self._nodes.update(nodes_bak)
+                raise
         else:
-            if not module_name:
+            path = path.strip(".")
+            if path in self._categorys:
+                nodes_bak = {
+                    key: self._nodes.pop(key)
+                    for key in tuple(self._nodes)
+                    if key.startswith(path + ".")
+                }
+                for key in tuple(modules):
+                    if key.startswith(path + "."):
+                        del modules[key]
+                for info in getattr(self, f"_{path}_dir").entryInfoList(
+                    filters=QDir.Filter.AllEntries | QDir.Filter.NoDotAndDotDot,
+                ):
+                    if info.fileName() == "__pycache__":
+                        continue
+                    try:
+                        self._load(f"{path}.{info.fileName()}")
+                    except Exception:
+                        _logger.exception(
+                            msg=self.tr("Failed to load: {}").format(
+                                info.absoluteFilePath()
+                            )
+                        )
+                        continue
+            elif path.startswith(self._categorys):
+                nodes_bak = (
+                    {path: self._nodes[path]}
+                    if path in self._nodes
+                    else {
+                        key: self._nodes.pop(key)
+                        for key in tuple(self._nodes)
+                        if key == path or key.startswith(path + ".")
+                    }
+                )
+                try:
+                    self._load(path)
+                except BaseException:
+                    self._nodes.update(nodes_bak)
+                    raise
+            else:
                 nodes_bak = {
                     key: self._nodes.pop(key)
                     for key in tuple(self._nodes)
                     if not key.startswith(
-                        (self.Category.Native + ".", self.Category.Plugins + ".")
+                        tuple(category + "." for category in self._categorys)
                     )
                 }
-            else:
-                nodes_bak = {
-                    key: self._nodes.pop(key)
-                    for key in tuple(self._nodes)
-                    if key == module_name or key.startswith(module_name + ".")
-                }
-        try:
-            if not module_name:
-                if category == self.Category.Extensions:
-                    eps: EntryPoints = entry_points(group="qckui.extensions")
+                try:
                     for key in tuple(modules):
-                        if any(
-                            key == ep.module or key.startswith(ep.module + ".")
-                            for ep in eps
-                        ):
-                            del modules[key]
-                    for ep in eps:
-                        try:
-                            if ep.attr:
-                                self._load_node(
-                                    ep.module + "." + ep.name,
-                                    ep.load(),
-                                )
-                            else:
-                                self._load_module(ep.load())
-                        except Exception:
-                            _logger.exception(
-                                msg=self.tr("Failed to load extension: {}").format(
-                                    ep.value
-                                )
-                            )
-                            continue
-                else:
-                    for key in tuple(modules):
-                        if key.startswith(category + "."):
-                            del modules[key]
-                    for info in self._dir[category].entryInfoList(
-                        filters=QDir.Filter.AllEntries | QDir.Filter.NoDotAndDotDot,
-                    ):
-                        if info.fileName() == "__pycache__":
-                            continue
-                        try:
-                            self._load(info.fileName(), category)
-                        except Exception:
-                            _logger.exception(
-                                msg=self.tr("Failed to load: {}").format(
-                                    info.absoluteFilePath()
-                                )
-                            )
-                            continue
-            else:
-                if category == self.Category.Extensions:
-                    for key in tuple(modules):
-                        if key == module_name or key.startswith(module_name + "."):
+                        if key == path or key.startswith(path + "."):
                             del modules[key]
                     for ep in entry_points(group="qckui.extensions"):
-                        if ep.module == module_name or ep.module.startswith(
-                            module_name + "."
-                        ):
+                        if ep.module == path or ep.module.startswith(path + "."):
                             try:
                                 if ep.attr:
                                     self._load_node(
@@ -340,14 +396,9 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
                                     )
                                 )
                                 continue
-                else:
-                    for key in tuple(modules):
-                        if key == path or key.startswith(path + "."):
-                            del modules[key]
-                    self._load(module_name, category)
-        except BaseException:
-            self._nodes.update(nodes_bak)
-            raise
+                except BaseException:
+                    self._nodes.update(nodes_bak)
+                    raise
         self.changed.emit()
 
     @override

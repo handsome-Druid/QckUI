@@ -22,7 +22,8 @@ def fixtures() -> Path:
 @fixture(scope="session")
 def nodes(qapp: QGuiApplication, fixtures: Path) -> Nodes:
     nodes = Nodes(parent=qapp)
-    nodes._dir["test"] = QDir(path=fixtures / "nodes")  # pyright: ignore[reportPrivateUsage]
+    nodes._test_dir = QDir(path=fixtures / "nodes")  # pyright: ignore[reportAttributeAccessIssue]
+    nodes._categorys = (*nodes._categorys, "test")  # pyright: ignore[reportAttributeAccessIssue, reportPrivateUsage]
     spec = ModuleSpec(name="test", loader=None, is_package=True)
     spec.submodule_search_locations = [str(object=fixtures / "nodes")]
     modules["test"] = module_from_spec(spec)
