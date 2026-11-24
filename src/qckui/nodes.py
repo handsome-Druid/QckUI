@@ -13,7 +13,7 @@ from inspect import (
 )
 from logging import Logger, getLogger
 from sys import modules, platform
-from types import ModuleType
+from types import ModuleType, UnionType
 from typing import (
     Annotated,
     ClassVar,
@@ -253,9 +253,22 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
         ):
             if i == 0 and isfunction(object=getattr_static(obj=cls, attr="__call__")):
                 continue
-            if get_origin(param.annotation) is not Literal:
+            if param.kind in (Parameter.VAR_KEYWORD, Parameter.VAR_POSITIONAL):
+                _logger.error(
+                    msg=self.tr(
+                        "Parameter '{name}' cannot be a variable positional or keyword parameter."
+                    ).format(name=n)
+                )
+                break
+            origin: type = get_origin(param.annotation)
+            if origin is not Literal:
                 try:
-                    issubclass(type, param.annotation)
+                    if origin is UnionType:
+                        for arg in get_args(tp=param.annotation):
+                            if get_origin(arg) is not Literal:
+                                issubclass(type, arg)
+                    else:
+                        issubclass(type, param.annotation)
                 except TypeError:
                     _logger.exception(
                         msg=self.tr(
@@ -352,7 +365,7 @@ class Nodes(Mapping[str, Node], QObject, metaclass=QABCMeta):
                             )
                         )
                         continue
-            elif path.startswith(self._categorys):
+            elif path.startswith(tuple(category + "." for category in self._categorys)):
                 nodes_bak = (
                     {path: self._nodes[path]}
                     if path in self._nodes
