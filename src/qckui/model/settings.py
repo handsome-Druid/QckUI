@@ -143,7 +143,7 @@ class Settings(QUndoStack, QSettings, MutableMapping[str, object], metaclass=QAB
 
     @Slot(str, result=bool)
     @override
-    def contains(self, key: str) -> bool:
+    def contains(self, key: str, /) -> bool:
         return super().contains(key)
 
     @Slot(str)
